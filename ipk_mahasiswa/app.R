@@ -181,8 +181,7 @@ export_to_xlsx <- function(gpas_table,summarized_gpas_table, period, generation)
         ) +
         geom_line(group = 1, alpha = 0.25) +
         geom_abline(intercept = 2.76, slope = 0, color = "tomato", alpha = 0.5) +
-        annotate("text", x = 0.5, y = 2.76, label = "2.76", angle = 0, vjust = 0.5, hjust = 0) +
-        ylim(0, 4) +
+        scale_y_continuous(limits = c(0, 4), breaks = c(0, 1, 2, 2.76, 3, 4)) +
         labs(x = "", y = "") +
         theme_bw() +
         theme(
@@ -398,8 +397,7 @@ server <- function(input, output, session) {
             # geom_text(aes(label = sprintf("%.2f", IPK)), vjust = -0.5) +
             geom_line(group = 1, alpha = 0.25) +
             geom_abline(intercept = 2.76, slope = 0, color = "tomato", alpha = 0.5) +
-            annotate("text", x = 0.5, y = 2.76, label = "2.76", angle = 0, vjust = 0.5, hjust = 0) +
-            ylim(0, 4) +
+            scale_y_continuous(limits = c(0, 4), breaks = c(0, 1, 2, 2.76, 3, 4)) +
             labs(x = "", y = "") +
             theme_bw() +
             theme(
