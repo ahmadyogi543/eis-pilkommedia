@@ -1,0 +1,65 @@
+---
+title: "Statistik Nilai Mata Kuliah Program Studi Pendidikan Komputer"
+author: "Admin Program Studi Pendidikan Komputer"
+output: pdf_document
+params:
+  course_name: course_name
+  filtered_scores: filtered_scores
+  semester: semester
+  year: year
+---
+\renewcommand{\tablename}{Tabel}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Informasi
+
+```{r echo=FALSE, results='asis'}
+cat(paste0("- Mata Kuliah: ", params$course_name, "\n"))
+cat(paste0("- Tahun: ", params$year, "\n"))
+cat(paste0("- Semester: ", params$semester, "\n"))
+```
+
+Adapun berikut adalah tabel statistik nilai dari mata kuliah di atas.
+
+```{r echo=FALSE}
+knitr::kable(
+  params$filtered_scores,
+  caption = "Statistik nilai mata kuliah"
+)
+```
+
+Berdasarkan tabel di atas, didapatkan informasi sebagai berikut.
+
+```{r echo=FALSE, results='asis'}
+cat("### Frekuensi\n\n")
+cat(
+  paste0(
+    "- total: ",
+    " (",
+    select(params$filtered_scores, FREKUENSI) |> sum(),
+    ") ",
+    "\n\n"
+  )
+)
+cat(
+  paste0(
+    "- terendah: ",
+    " (",
+    select(params$filtered_scores, FREKUENSI) |> min(),
+    ") ",
+    "\n\n"
+  )
+)
+cat(
+  paste0(
+    "- tertinggi: ",
+    " (",
+    select(params$filtered_scores, FREKUENSI) |> max(),
+    ") ",
+    "\n\n"
+  )
+)
+```

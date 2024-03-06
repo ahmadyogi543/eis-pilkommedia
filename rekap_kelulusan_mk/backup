@@ -1,0 +1,243 @@
+# Load necessary libraries
+library(shiny)
+library(tidyverse)
+
+# Define UI for application
+ui <- fluidPage(
+  titlePanel("Statistik Nilai Mata Kuliah Prodi Pendidikan Komputer"),
+  fileInput("file", "Pilih File CSV",
+    accept = c(
+      "text/csv",
+      "text/comma-separated-values,text/plain",
+      ".csv"
+    )
+  ),
+  htmlOutput("information_ui"),
+  br(),
+  uiOutput("course_id_ui"),
+  uiOutput("statistic_table_ui"),
+  htmlOutput("freq_summary_ui"),
+  br(),
+  uiOutput("pdf_ui"),
+  br()
+)
+
+server <- function(input, output, session) {
+  # read csv from user
+  scores <- reactive({
+    req(input$file)
+    
+    # read the csv
+    scores <- read_csv(
+      input$file$datapath,
+      col_types = cols(
+        NIM = "character",
+        PERIODE = "character",
+        `NILAI HURUF` = "factor",
+        `KODE MATA KULIAH` = "factor",
+        NIM = "factor",
+        `JENIS MATA KULIAH` = "factor",
+        `NAMA KURIKULUM` = "factor"
+      )
+    ) |> na.omit()
+    
+    # change some column to correct factor
+    scores$`NILAI HURUF` <- factor(
+      scores$`NILAI HURUF`,
+      ordered = TRUE,
+      levels = c(
+        "E", "D",
+        "D+", "C",
+        "C+", "B-",
+        "B", "B+",
+        "A-", "A"
+      ) 
+    )
+    scores
+  })
+ 
+  # get year and semester
+  semester <- reactive({
+    value <- scores() |> pull(PERIODE)
+    value <- substr(value[1], 5, 5)
+    if (value == 1) {
+      "Ganjil"
+    } else {
+      "Genap"
+    }
+  })
+  year <- reactive({
+    value <- scores() |> pull(PERIODE)
+    substr(value[1], 1, 4)
+  })
+   
+  # process the input
+  processed_scores <- reactive({
+    scores() |>
+    group_by(`NAMA MATA KULIAH`) |>
+    count(`NILAI HURUF`, name = "FREKUENSI") |>
+    complete(`NILAI HURUF`, fill = list(n = 0)) |>
+    replace_na(list(FREKUENSI = 0)) |>
+    mutate(PERSENTASE = round(FREKUENSI / sum(FREKUENSI) * 100, 2)) |>
+    arrange(`NAMA MATA KULIAH`, desc(`NILAI HURUF`), desc(FREKUENSI))
+  })
+
+  # render the select input 
+  output$course_id_ui <- renderUI({
+    req(scores())
+    selectInput(
+      "course_id",
+      "Kode Mata Kuliah",
+      choices = select(
+        scores(),
+        `NAMA MATA KULIAH`
+      ) |> arrange(`NAMA MATA KULIAH`)
+    )
+  })
+  
+  # get the course id
+  course_id <- reactive(input$course_id)
+  filtered_scores <- reactive({
+    processed_scores() |>
+      filter(`NAMA MATA KULIAH` == course_id()) |>
+      ungroup(`NAMA MATA KULIAH`) |>
+      select(`NILAI HURUF`, FREKUENSI, PERSENTASE)
+  })
+  
+  # render the table based on course id 
+  output$statistic_table_ui <- renderUI({
+    req(course_id())
+    renderTable(filtered_scores())
+  })
+  
+  # render information
+  output$information_ui <- renderText({
+    req(course_id())
+   
+    paste(
+      paste0("TAHUN: ", year()),
+      paste0("SEMESTER: ", semester()),
+      sep = "<br />"
+    )
+  })
+  
+  # render frequencies summary
+  output$freq_summary_ui <- renderText({
+    req(course_id())
+   
+    freq <- select(filtered_scores(), FREKUENSI) 
+    freq_total <- sum(freq)
+    freq_min <- min(freq)
+    freq_max <- max(freq)
+    
+    paste(
+      paste0("TOTAL FREKUENSI: ", freq_total),
+      paste0("FREKUENSI TERENDAH: ", freq_min),
+      paste0("FREKUENSI TERTINGGI: ", freq_max),
+      sep = "<br />"
+    )
+  })
+  
+  # render pdf button
+  output$pdf_ui <- renderUI({
+    req(course_id())
+    downloadButton("pdf", "Export to PDF")
+  })
+  
+  # export to pdf
+  output$pdf <- downloadHandler(
+    filename = "export.pdf",
+    content = function(file) {
+      temp <- file.path(tempdir(), "template.Rmd")
+      file.copy("template.Rmd", temp, overwrite = TRUE)
+      
+      rmarkdown::render(
+        temp,
+        output_file = file,
+        envir = new.env(parent = globalenv()),
+        params = list(
+          course_name = course_id(),
+          semester = semester(),
+          year = year(),
+          filtered_scores = filtered_scores()
+        )
+      )
+    }
+  )
+}
+
+# Run the application
+shinyApp(ui = ui, server = server)
+
+
+
+
+
+
+
+
+output$passed_scores_plot_ui <- renderUI({
+    req(scores())
+    req(course())
+    req(curriculum())
+    
+    if (curriculum() != "-" & course() != "-") {
+      split_text <- strsplit(course(), " - ")
+      course_id <- trimws(split_text[[1]][1])
+      course_name <- trimws(split_text[[1]][2])
+      
+      passed_scores <- get_passed_scores(
+        course_id,
+        course_name,
+        scores()
+      )
+      
+      passed_percentage <- get_passed_percentage(passed_scores)
+      
+      get_legend_labels <- function(x) {
+        percentage <- passed_percentage |>
+          filter(STATUS == unique(x)) |>
+          pull(PERSENTASE)
+         
+        paste(
+          unique(x),
+          sprintf(
+            " (%.1f%%)",
+            percentage
+          )
+        )
+      }
+        
+      renderPlot({
+        passed_scores |>
+        ggplot(aes(x = STATUS, fill = STATUS)) +
+          geom_bar(width = 0.2) +
+          geom_text(
+            stat = "count",
+            aes(label = stat(count)),
+            position = position_stack(vjust = 0.5),
+            color = "white",
+            size = 5
+          ) +
+          labs(
+            x = "",
+            y = ""
+          ) +
+          theme_bw() +
+          scale_fill_manual(
+            values = c(
+              "Lulus" = "seagreen",
+              "Tidak Lulus" = "tomato"
+            ),
+            labels = get_legend_labels
+          ) +
+          theme(
+            axis.text = element_text(size = 14),
+            legend.title = element_text(size = 14, face = "bold"),
+            legend.text = element_text(size = 12)
+          )
+      })
+    }
+  })
+  
+  

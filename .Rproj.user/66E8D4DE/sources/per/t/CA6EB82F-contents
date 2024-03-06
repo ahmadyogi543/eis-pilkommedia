@@ -1,0 +1,422 @@
+# Load necessary libraries
+library(dplyr)
+library(forcats)
+library(ggplot2)
+library(tidyr)
+library(readxl)
+library(shiny)
+
+# Helpers
+read_file_upload_xls <- function(filepath) {
+  scores <- read_xls(filepath) |>
+    rename(`JENIS MATA KULIAH` = `JENIS MATA KULIAH (1= WAJIB , 0= PILIHAN)`) |>
+    rename_with(~gsub("\\ ", ".", .), everything()) |>
+    mutate(
+      NILAI.ANGKA = as.numeric(NILAI.ANGKA),
+      NILAI.INDEKS = as.numeric(NILAI.INDEKS),
+      SKS.MATA.KULIAH = as.numeric(SKS.MATA.KULIAH),
+      JENIS.MATA.KULIAH = as.numeric(JENIS.MATA.KULIAH)
+    ) |> na.omit()
+  
+  # change some column to use factors
+  scores$NILAI.HURUF <- factor(
+    scores$NILAI.HURUF,
+    ordered = TRUE,
+    levels = c(
+      NA, "E", "D",
+      "D+", "C", "C+",
+      "B-", "B", "B+",
+      "A-", "A"
+    )
+  )
+  
+  return(scores)
+}
+
+get_scores_table <- function(course_id, course_name, scores) {
+  new_scores <- scores |>
+    select(
+      -JENIS.MATA.KULIAH,
+      -NILAI.ANGKA,
+      -NAMA.KELAS,
+      -NAMA.KURIKULUM,
+      -PERIODE,
+      -SKS.MATA.KULIAH
+    ) |>
+    filter(
+      KODE.MATA.KULIAH == course_id &
+      NAMA.MATA.KULIAH == course_name
+    ) |>
+    select(
+      -KODE.MATA.KULIAH,
+      -NAMA.MATA.KULIAH
+    ) |>
+    arrange(NIM) |>
+    mutate(NO = row_number()) |>
+    select(NO, everything()) |>
+    rename_with(~gsub("\\.", " ", .), everything())
+
+  return(new_scores)
+}
+
+get_passed_percentage <- function(passed_scores) {
+  passed_percentage <- passed_scores |>
+    count(STATUS, name = "FREKUENSI") |>
+    mutate(PERSENTASE = round(FREKUENSI / sum(FREKUENSI) * 100, 2))
+  
+  return(passed_percentage)
+}
+
+get_summarized_scores <- function(course_id, course_name, scores) {
+ summarized_scores <- scores |>
+    filter(
+      KODE.MATA.KULIAH == course_id &
+      NAMA.MATA.KULIAH == course_name
+    ) |>
+    group_by(NAMA.MATA.KULIAH, KODE.MATA.KULIAH) |>
+    count(NILAI.HURUF, name = "FREKUENSI") |>
+    complete(NILAI.HURUF, fill = list(n = 0)) |>
+    replace_na(list(FREKUENSI = 0)) |>
+    mutate(
+      PERSENTASE = round(FREKUENSI / sum(FREKUENSI) * 100, 2)
+    ) |>
+    arrange(
+      NAMA.MATA.KULIAH,
+      KODE.MATA.KULIAH,
+      desc(NILAI.HURUF),
+      desc(FREKUENSI)
+    ) |>
+    ungroup(NAMA.MATA.KULIAH, KODE.MATA.KULIAH) |>
+    select(
+      -NAMA.MATA.KULIAH,
+      -KODE.MATA.KULIAH
+    ) |>
+    rename_with(~gsub("\\.", " ", .), everything())
+ 
+ return(summarized_scores)
+}
+
+get_passed_scores <- function(course_id, course_name, scores) {
+  is_pass <- function(grade) {
+    pass <- ifelse(
+      !(grade %in% c("D+", "D", "E")),
+      "Lulus",
+      "Tidak Lulus"
+    )
+    
+    return(pass)
+  }
+  
+  passed_scores <- scores |>
+    filter(
+      KODE.MATA.KULIAH == course_id &
+      NAMA.MATA.KULIAH == course_name
+    ) |>
+    mutate(STATUS = is_pass(NILAI.HURUF)) |>
+    select(STATUS)
+ 
+  return(passed_scores)
+}
+
+get_course_info <- function(course_id, course_name, scores) {
+  get_course_type <- function(type) {
+    type <- ifelse(type == 0, "Pilihan", "Wajib")
+    return(type)
+  }
+  
+  get_course_period <- function(period) {
+    course_semester <- ifelse(substr(
+      period,
+      start = 5,
+      stop = 5
+    ) == "1", "Ganjil", "Genap")
+    course_year <- as.numeric(substr(
+      period,
+      start = 1,
+      stop = 4
+    ))
+    
+    return(sprintf("%d/%d %s", course_year, course_year+1, course_semester))
+  }
+   
+  course_info <- scores |>
+    filter(
+      KODE.MATA.KULIAH == course_id &
+      NAMA.MATA.KULIAH == course_name
+    ) |>
+    select(SKS.MATA.KULIAH, JENIS.MATA.KULIAH, PERIODE) |>
+    mutate(
+      JENIS.MATA.KULIAH = get_course_type(JENIS.MATA.KULIAH),
+      PERIODE = get_course_period(PERIODE)
+    ) |>
+    slice(1)
+  
+  return(course_info)
+}
+
+# Define UI for application
+ui <- fluidPage(
+  h4("Statistik Deskriptif Nilai Mata Kuliah"),
+  h4("Program Studi Pendidikan Komputer"),
+  h4("FKIP Universitas Lambung Mangkurat"),
+  br(),
+  fluidRow(
+    column(
+      width = 3,
+      fluidRow(
+        column(
+          width = 12,
+          fileInput("file", "Pilih File XLS",
+            accept = c(
+              "application/vnd.ms-excel",
+              ".xls"
+            )
+          ),
+          uiOutput("curriculum_ui"),
+          uiOutput("course_ui"),
+        ),
+        column(
+          width = 12,
+          htmlOutput("course_info_ui")
+        ),
+        column(
+          width = 12,
+          htmlOutput("passed_scores_ui")
+        )
+      )
+    ),
+    column(
+      width = 9,
+      uiOutput("scores_table_ui")
+    )
+  ),
+  br(),
+  fluidRow(
+    column(
+      width = 4,
+      offset = 3,
+      uiOutput("scores_summary_table_ui")
+    ),
+    column(
+      width = 5,
+      uiOutput("scores_summary_plot_ui")
+    )
+  )
+)
+
+server <- function(input, output, session) {
+  # states
+  scores <- reactive({
+    req(input$file)
+    return(read_file_upload_xls(input$file$datapath))
+  })
+  course <- reactive(input$course)
+  curriculum <- reactive(input$curriculum)
+
+  # render select curriculum ui
+  output$curriculum_ui <- renderUI({
+    req(scores())
+    
+    # get choices
+    choices <- scores() |>
+      select(NAMA.KURIKULUM) |>
+      add_row(NAMA.KURIKULUM = "-") |>
+      arrange(NAMA.KURIKULUM) |>
+      distinct(NAMA.KURIKULUM)
+     
+    selectInput(
+      "curriculum",
+      "Pilih Kurikulum",
+      choices = choices
+    )
+  })
+
+  # render select course ui
+  output$course_ui <- renderUI({
+    req(curriculum())
+    
+    if (curriculum() != "-") {
+      # get choices
+      choices <- scores() |>
+        filter(NAMA.KURIKULUM == curriculum()) |>
+        mutate(NAMA.MATA.KULIAH = paste0(
+          KODE.MATA.KULIAH,
+          " - ",
+          NAMA.MATA.KULIAH
+        )) |>
+        select(NAMA.MATA.KULIAH) |>
+        add_row(NAMA.MATA.KULIAH = "-") |>
+        arrange(NAMA.MATA.KULIAH) |>
+        distinct(NAMA.MATA.KULIAH)
+       
+      selectInput(
+        "course",
+        "Pilih Mata Kuliah",
+        choices = choices
+      )
+    }
+  })
+  
+  # render course info
+  output$course_info_ui <- renderUI({
+    req(scores())
+    req(course())
+    req(curriculum())
+   
+    # split the id and name of the selected course 
+    split_text <- strsplit(course(), " - ")
+    course_id <- trimws(split_text[[1]][1])
+    course_name <- trimws(split_text[[1]][2])
+    
+    course_info <- get_course_info(
+      course_id,
+      course_name,
+      scores()
+    )
+    
+    if (curriculum() != "-" & course() != "-") {
+      HTML(
+        paste(
+          paste0("<br />"),
+          paste0("<p><b>Informasi Mata Kuliah</b></p>"),
+          paste0("<p>SKS Mata Kuliah: ", course_info$SKS.MATA.KULIAH, "</p>"),
+          paste0("<p>Jenis Mata Kuliah: ", course_info$JENIS.MATA.KULIAH, "</p>"),
+          paste0("<p>Periode: ", course_info$PERIODE, "</p>")
+        )
+      )
+    }
+  })
+ 
+  # render scores table
+  output$scores_table_ui <- renderUI({
+    req(scores())
+    req(course())
+    req(curriculum())
+   
+    # split the id and name of the selected course 
+    split_text <- strsplit(course(), " - ")
+    course_id <- trimws(split_text[[1]][1])
+    course_name <- trimws(split_text[[1]][2])
+   
+    if (curriculum() != "-" & course() != "-") {
+      renderDataTable(
+        get_scores_table(
+          course_id,
+          course_name,
+          scores()
+        ),
+        options = list(
+          pageLength = 10,
+          columnDefs = list(
+            list(targets = "_all", searchable = FALSE)
+          )
+        )
+      ) 
+    }
+  })
+  
+  # render passed scores ui
+  output$passed_scores_ui <- renderUI({
+    req(scores())
+    req(course())
+    req(curriculum())
+   
+    # split the id and name of the selected course 
+    split_text <- strsplit(course(), " - ")
+    course_id <- trimws(split_text[[1]][1])
+    course_name <- trimws(split_text[[1]][2])
+    
+    passed_scores <- get_passed_scores(
+      course_id,
+      course_name,
+      scores()
+    )
+    
+    passed_percentage <- get_passed_percentage(passed_scores)
+    
+    get_percentage <- function(x) {
+      percentage <- passed_percentage |>
+        filter(STATUS == unique(x)) |>
+        pull(PERSENTASE)
+      
+      paste(
+        unique(x),
+        sprintf(
+          " (%.1f%%)",
+          percentage
+        )
+      )
+    }
+    
+    if (curriculum() != "-" & course() != "-") {
+      HTML(
+        paste(
+          paste0("<br />"),
+          paste0("<p><b>Status Kelulusan</b></p>"),
+          paste0("<p>", get_percentage("Lulus"), "</p>"),
+          paste0("<p>", get_percentage("Tidak Lulus"), "</p>")
+        )
+      )
+    }
+  })
+  
+  # render scores summary table
+  output$scores_summary_table_ui <- renderUI({
+    req(scores())
+    req(course())
+    req(curriculum())
+    
+    if (curriculum() != "-" & course() != "-") {
+      split_text <- strsplit(course(), " - ")
+      course_id <- trimws(split_text[[1]][1])
+      course_name <- trimws(split_text[[1]][2])
+      
+      summarized_scores <- get_summarized_scores(
+        course_id,
+        course_name,
+        scores()
+      )
+      
+      renderTable(summarized_scores)
+    }
+  })
+  
+  # render scores summary plot
+  output$scores_summary_plot_ui <- renderUI({
+    req(scores())
+    req(course())
+    req(curriculum())
+    
+    if (curriculum() != "-" & course() != "-") {
+      split_text <- strsplit(course(), " - ")
+      course_id <- trimws(split_text[[1]][1])
+      course_name <- trimws(split_text[[1]][2])
+      
+      summarized_scores <- get_summarized_scores(
+        course_id,
+        course_name,
+        scores()
+      )
+       
+      renderPlot({
+        ggplot(
+          summarized_scores,
+          aes(x = `NILAI HURUF`, y = `FREKUENSI`)
+        ) +
+          geom_line(group = 1) +
+          geom_point() +
+          labs(
+            x = "",
+            y = ""
+          ) +
+          theme_bw() +
+          theme(
+            axis.text = element_text(size = 14)
+          )
+      })
+    }
+  })
+  }
+
+# Run the application
+shinyApp(ui = ui, server = server)

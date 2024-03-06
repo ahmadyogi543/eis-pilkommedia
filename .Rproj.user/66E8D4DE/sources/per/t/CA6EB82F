@@ -1,0 +1,27 @@
+{
+    "id": "CA6EB82F",
+    "path": "~/Learning/programming/r/statistik_nilai_mata_kuliah_pilkom/app/app.R",
+    "project_path": "app/app.R",
+    "type": "r_source",
+    "hash": "3291074418",
+    "contents": "",
+    "dirty": false,
+    "created": 1707808148763.0,
+    "source_on_save": false,
+    "relative_order": 2,
+    "properties": {
+        "source_window_id": "",
+        "Source": "Source",
+        "cursorPosition": "7,0",
+        "scrollLine": "0",
+        "marks": "<:356,21\n>:356,21"
+    },
+    "folds": "9|44|33|0|\n35|62|59|0|\n61|50|67|0|\n69|67|96|0|\n98|63|118|0|\n",
+    "lastKnownWriteTime": 1708417740,
+    "encoding": "UTF-8",
+    "collab_server": "",
+    "source_window": "",
+    "last_content_update": 1708417740802,
+    "read_only": false,
+    "read_only_alternatives": []
+}

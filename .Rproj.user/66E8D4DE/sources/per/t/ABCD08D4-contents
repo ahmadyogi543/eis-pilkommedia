@@ -1,0 +1,6 @@
+data <- data.frame(dist=c(2.914, 2.437, 2.542), year=c(2013, 2014, 2015))
+# this ensures that stuff will be ordered appropriately
+data$year <- ordered(data$year, levels=c(2013, 2014, 2015))
+ggplot(data, aes(x=factor(year), y=dist, group=1)) +
+  geom_line() +
+  geom_point()
