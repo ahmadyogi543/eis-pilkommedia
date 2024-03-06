@@ -44,22 +44,18 @@ get_generation_gpas_table <- function(gpas, generation) {
     return(status)
   }
 
- get_remainder_credits <- function(generation, credits) {
-   remainder_credits <- numeric(length(generation))
+  get_remainder_credits <- function(generation, credits) {
+    remainder_credits <- numeric(length(generation))
 
-   for (i in seq_along(generation)) {
-     if (generation[i] < 2017) {
-       remainder_credits[i] <- 149 - credits[i]
-     } else if (generation[i] < 2020) {
-       remainder_credits[i] <- 145 - credits[i]
-     } else {
-       remainder_credits[i] <- 146 - credits[i]
-     }
-
-     if (remainder_credits[i] < 0) {
-       remainder_credits[i] = 0
-     }
-   }
+    for (i in seq_along(generation)) {
+      if (generation[i] < 2017) {
+        remainder_credits[i] <- 149 - credits[i]
+      } else if (generation[i] < 2020) {
+        remainder_credits[i] <- 145 - credits[i]
+      } else {
+        remainder_credits[i] <- 146 - credits[i]
+      }
+    }
 
     return(remainder_credits)
   }
@@ -353,7 +349,7 @@ server <- function(input, output, session) {
       renderDataTable(
         generation_gpas_table() |> select(-`PREDIKAT KELULUSAN`),
         options = list(
-          pageLength = 10,
+          pageLength = -1,
           columnDefs = list(
             list(targets = "_all", searchable = FALSE, orderable = FALSE),
             list(targets = 5, width = "80px"),
